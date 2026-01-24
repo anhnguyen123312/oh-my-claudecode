@@ -1,7 +1,6 @@
 ---
 name: omc-setup
 description: Setup and configure oh-my-claudecode (the ONLY command you need to learn)
-user-invocable: true
 ---
 
 # OMC Setup
@@ -237,6 +236,36 @@ elif [ -n "$LATEST_VERSION" ]; then
 fi
 ```
 
+## Step 3.7: Set Default Execution Mode
+
+Use the AskUserQuestion tool to prompt the user:
+
+**Question:** "Which parallel execution mode should be your default when you say 'fast' or 'parallel'?"
+
+**Options:**
+1. **ultrawork (maximum capability)** - Uses all agent tiers including Opus for complex tasks. Best for challenging work where quality matters most. (Recommended)
+2. **ecomode (token efficient)** - Prefers Haiku/Sonnet agents, avoids Opus. Best for pro-plan users who want cost efficiency.
+
+Store the preference in `~/.claude/.omc-config.json`:
+
+```bash
+# Read existing config or create empty object
+CONFIG_FILE="$HOME/.claude/.omc-config.json"
+mkdir -p "$(dirname "$CONFIG_FILE")"
+
+if [ -f "$CONFIG_FILE" ]; then
+  EXISTING=$(cat "$CONFIG_FILE")
+else
+  EXISTING='{}'
+fi
+
+# Set defaultExecutionMode (replace USER_CHOICE with "ultrawork" or "ecomode")
+echo "$EXISTING" | jq --arg mode "USER_CHOICE" '. + {defaultExecutionMode: $mode, configuredAt: (now | todate)}' > "$CONFIG_FILE"
+echo "Default execution mode set to: USER_CHOICE"
+```
+
+**Note**: This preference ONLY affects generic keywords ("fast", "parallel"). Explicit keywords ("ulw", "eco") always override this preference.
+
 ## Step 4: Verify Plugin Installation
 
 ```bash
@@ -289,6 +318,7 @@ Just include these words naturally in your request:
 | ralph | Persistence mode | "ralph: fix the auth bug" |
 | ralplan | Iterative planning | "ralplan this feature" |
 | ulw | Max parallelism | "ulw refactor the API" |
+| eco | Token-efficient mode | "eco refactor the API" |
 | plan | Planning interview | "plan the new endpoints" |
 
 Combine them: "ralph ulw: migrate the database"
@@ -323,6 +353,7 @@ MAGIC KEYWORDS (power-user shortcuts):
 | ralph | /ralph | "ralph: fix the bug" |
 | ralplan | /ralplan | "ralplan this feature" |
 | ulw | /ultrawork | "ulw refactor API" |
+| eco | (new!) | "eco fix all errors" |
 | plan | /planner | "plan the endpoints" |
 
 HUD STATUSLINE:

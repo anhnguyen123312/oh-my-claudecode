@@ -1,7 +1,6 @@
 ---
 name: swarm
 description: N coordinated agents on shared task list with atomic claiming
-user-invocable: true
 ---
 
 # Swarm Skill

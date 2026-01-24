@@ -46,7 +46,9 @@ When you detect these patterns, you MUST invoke the corresponding skill:
 | "autopilot", "build me", "I want a" | `autopilot` |
 | Broad/vague request | `planner` (after explore for context) |
 | "don't stop", "must complete", "ralph" | `ralph` |
-| "fast", "parallel", "ulw", "ultrawork" | `ultrawork` |
+| "ulw", "ultrawork" | `ultrawork` (explicit, always) |
+| "eco", "ecomode", "efficient", "save-tokens", "budget" | `ecomode` (explicit, always) |
+| "fast", "parallel" (no explicit mode keyword) | Check `defaultExecutionMode` config → route to default (ultrawork if unset) |
 | "ultrapilot", "parallel build" | `ultrapilot` |
 | "swarm", "coordinated agents" | `swarm` |
 | "pipeline", "chain agents" | `pipeline` |
@@ -59,6 +61,11 @@ When you detect these patterns, you MUST invoke the corresponding skill:
 | "research", "analyze data", "statistics" | `research` |
 | "stop", "cancel", "abort" | `cancel` (unified) |
 
+**Keyword Conflict Resolution:**
+- Explicit mode keywords (`ulw`, `ultrawork`, `eco`, `ecomode`) ALWAYS override defaults
+- If BOTH explicit keywords present (e.g., "ulw eco fix errors"), **ecomode wins** (more token-restrictive)
+- Generic keywords (`fast`, `parallel`) respect config file default
+
 ### Smart Model Routing (SAVE TOKENS)
 
 **ALWAYS pass `model` parameter explicitly when delegating!**
@@ -68,6 +75,38 @@ When you detect these patterns, you MUST invoke the corresponding skill:
 | Simple lookup | `haiku` | "What does this return?", "Find definition of X" |
 | Standard work | `sonnet` | "Add error handling", "Implement feature" |
 | Complex reasoning | `opus` | "Debug race condition", "Refactor architecture" |
+
+### Default Execution Mode Preference
+
+When user says "parallel" or "fast" WITHOUT an explicit mode keyword:
+
+1. **Check for explicit mode keywords first:**
+   - "ulw", "ultrawork" → activate `ultrawork` immediately
+   - "eco", "ecomode", "efficient", "save-tokens", "budget" → activate `ecomode` immediately
+
+2. **If no explicit keyword, read config file:**
+   ```bash
+   CONFIG_FILE="$HOME/.claude/.omc-config.json"
+   if [[ -f "$CONFIG_FILE" ]]; then
+     DEFAULT_MODE=$(cat "$CONFIG_FILE" | jq -r '.defaultExecutionMode // "ultrawork"')
+   else
+     DEFAULT_MODE="ultrawork"
+   fi
+   ```
+
+3. **Activate the resolved mode:**
+   - If `"ultrawork"` → activate `ultrawork` skill
+   - If `"ecomode"` → activate `ecomode` skill
+
+**Conflict Resolution Priority:**
+| Priority | Condition | Result |
+|----------|-----------|--------|
+| 1 (highest) | Both explicit keywords present | `ecomode` wins (more restrictive) |
+| 2 | Single explicit keyword | That mode wins |
+| 3 | Generic "fast"/"parallel" only | Read from config |
+| 4 (lowest) | No config file | Default to `ultrawork` |
+
+Users set their preference via `/oh-my-claudecode:omc-setup`.
 
 ### Path-Based Write Rules
 
@@ -130,7 +169,7 @@ Users don't need to learn commands. You detect intent and activate behaviors aut
 | "plan this" / broad request | Start planning interview via planner |
 | "don't stop until done" | Activate ralph-loop for persistence |
 | UI/frontend work | Activate design sensibility + delegate to designer |
-| "fast" / "parallel" | Activate ultrawork for max parallelism |
+| "fast" / "parallel" | Activate default execution mode (ultrawork or ecomode per config) |
 | "stop" / "cancel" | Intelligently stop current operation |
 
 ### Magic Keywords (Optional Shortcuts)
@@ -142,6 +181,7 @@ Users don't need to learn commands. You detect intent and activate behaviors aut
 | `ulw` | Maximum parallelism | "ulw fix all errors" |
 | `plan` | Planning interview | "plan the new API" |
 | `ralplan` | Iterative planning consensus | "ralplan this feature" |
+| `eco` | Token-efficient parallelism | "eco fix all errors" |
 
 **Combine them:** "ralph ulw: migrate database" = persistence + parallelism
 
@@ -163,7 +203,7 @@ User says "stop", "cancel", "abort" → Invoke unified `cancel` skill (automatic
 | `autopilot` | Full autonomous execution from idea to working code | "autopilot", "build me", "I want a" | `/oh-my-claudecode:autopilot` |
 | `orchestrate` | Core multi-agent orchestration | Always active | - |
 | `ralph` | Persistence until verified complete | "don't stop", "must complete" | `/oh-my-claudecode:ralph` |
-| `ultrawork` | Maximum parallel execution | "fast", "parallel", "ulw" | `/oh-my-claudecode:ultrawork` |
+| `ultrawork` | Maximum parallel execution | "ulw", "ultrawork" | `/oh-my-claudecode:ultrawork` |
 | `planner` | Strategic planning with interview | "plan this", broad requests | `/oh-my-claudecode:planner` |
 | `plan` | Start planning session | "plan" keyword | `/oh-my-claudecode:plan` |
 | `ralplan` | Iterative planning (Planner+Architect+Critic) | "ralplan" keyword | `/oh-my-claudecode:ralplan` |
@@ -192,6 +232,8 @@ User says "stop", "cancel", "abort" → Invoke unified `cancel` skill (automatic
 | `cancel-ralph` | Cancel active ralph loop (use `cancel` instead) | "stop" in ralph | `/oh-my-claudecode:cancel-ralph` |
 | `cancel-ultrawork` | Cancel ultrawork mode (use `cancel` instead) | "stop" in ultrawork | `/oh-my-claudecode:cancel-ultrawork` |
 | `cancel-ultraqa` | Cancel ultraqa workflow (use `cancel` instead) | "stop" in ultraqa | `/oh-my-claudecode:cancel-ultraqa` |
+| `ecomode` | Token-efficient parallel execution | "eco", "efficient", "budget" | `/oh-my-claudecode:ecomode` |
+| `cancel-ecomode` | Cancel ecomode mode (use `cancel` instead) | "stop" in ecomode | `/oh-my-claudecode:cancel-ecomode` |
 | `research` | Parallel scientist orchestration | "research", "analyze data" | `/oh-my-claudecode:research` |
 
 ### All 29 Agents

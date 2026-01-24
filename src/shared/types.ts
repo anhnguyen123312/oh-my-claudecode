@@ -44,7 +44,6 @@ export interface PluginConfig {
   mcpServers?: {
     exa?: { enabled?: boolean; apiKey?: string };
     context7?: { enabled?: boolean };
-    grepApp?: { enabled?: boolean };
   };
 
   // Permission settings

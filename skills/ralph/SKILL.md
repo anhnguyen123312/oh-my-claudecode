@@ -1,7 +1,6 @@
 ---
 name: ralph
 description: Self-referential loop until task completion with architect verification
-user-invocable: true
 ---
 
 # Ralph Skill

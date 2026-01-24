@@ -1,7 +1,6 @@
 ---
 name: plan
 description: Strategic planning with optional interview workflow
-user-invocable: true
 ---
 
 # Plan - Strategic Planning Skill

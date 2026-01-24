@@ -1,7 +1,6 @@
 ---
 name: cancel
-description: Cancel any active OMC mode (autopilot, ralph, ultrawork, ultraqa)
-user-invocable: true
+description: Cancel any active OMC mode (autopilot, ralph, ultrawork, ecomode, ultraqa)
 ---
 
 # Cancel Skill
@@ -14,6 +13,7 @@ Automatically detects which mode is active and cancels it:
 - **Autopilot**: Stops workflow, preserves progress for resume
 - **Ralph**: Stops persistence loop, clears linked ultrawork if applicable
 - **Ultrawork**: Stops parallel execution (standalone or linked)
+- **Ecomode**: Stops token-efficient parallel execution (standalone or linked to ralph)
 - **UltraQA**: Stops QA cycling workflow
 
 ## Usage
@@ -30,13 +30,15 @@ The skill checks state files to determine what's active:
 - `.omc/autopilot-state.json` → Autopilot detected
 - `.omc/ralph-state.json` → Ralph detected
 - `.omc/ultrawork-state.json` → Ultrawork detected
+- `.omc/ecomode-state.json` → Ecomode detected
 - `.omc/ultraqa-state.json` → UltraQA detected
 
 If multiple modes are active, they're cancelled in order of dependency:
-1. Autopilot (includes ralph/ultraqa cleanup)
-2. Ralph (includes linked ultrawork cleanup)
+1. Autopilot (includes ralph/ultraqa/ecomode cleanup)
+2. Ralph (includes linked ultrawork OR ecomode cleanup)
 3. Ultrawork (standalone)
-4. UltraQA (standalone)
+4. Ecomode (standalone)
+5. UltraQA (standalone)
 
 ## Force Clear All
 
@@ -56,9 +58,11 @@ This removes all state files:
 - `.omc/autopilot-state.json`
 - `.omc/ralph-state.json`
 - `.omc/ultrawork-state.json`
+- `.omc/ecomode-state.json`
 - `.omc/ultraqa-state.json`
 - `~/.claude/ralph-state.json`
 - `~/.claude/ultrawork-state.json`
+- `~/.claude/ecomode-state.json`
 
 ## Implementation Steps
 
@@ -81,6 +85,7 @@ fi
 AUTOPILOT_ACTIVE=false
 RALPH_ACTIVE=false
 ULTRAWORK_ACTIVE=false
+ECOMODE_ACTIVE=false
 ULTRAQA_ACTIVE=false
 
 if [[ -f .omc/autopilot-state.json ]]; then
@@ -93,6 +98,10 @@ fi
 
 if [[ -f .omc/ultrawork-state.json ]]; then
   ULTRAWORK_ACTIVE=$(cat .omc/ultrawork-state.json | jq -r '.active // false')
+fi
+
+if [[ -f .omc/ecomode-state.json ]]; then
+  ECOMODE_ACTIVE=$(cat .omc/ecomode-state.json | jq -r '.active // false')
 fi
 
 if [[ -f .omc/ultraqa-state.json ]]; then
@@ -110,6 +119,7 @@ if [[ "$FORCE_MODE" == "true" ]]; then
   rm -f .omc/autopilot-state.json
   rm -f .omc/ralph-state.json
   rm -f .omc/ultrawork-state.json
+  rm -f .omc/ecomode-state.json
   rm -f .omc/ultraqa-state.json
   rm -f .omc/ralph-plan-state.json
   rm -f .omc/ralph-verification.json
@@ -117,6 +127,7 @@ if [[ "$FORCE_MODE" == "true" ]]; then
   # Remove global state files
   rm -f ~/.claude/ralph-state.json
   rm -f ~/.claude/ultrawork-state.json
+  rm -f ~/.claude/ecomode-state.json
 
   echo "All OMC modes cleared. You are free to start fresh."
   exit 0
@@ -272,6 +283,7 @@ if [[ "$FORCE_MODE" == "true" ]]; then
   rm -f .omc/autopilot-state.json
   rm -f .omc/ralph-state.json
   rm -f .omc/ultrawork-state.json
+  rm -f .omc/ecomode-state.json
   rm -f .omc/ultraqa-state.json
   rm -f .omc/ralph-plan-state.json
   rm -f .omc/ralph-verification.json
@@ -279,6 +291,7 @@ if [[ "$FORCE_MODE" == "true" ]]; then
   # Remove global state files
   rm -f ~/.claude/ralph-state.json
   rm -f ~/.claude/ultrawork-state.json
+  rm -f ~/.claude/ecomode-state.json
 
   echo ""
   echo "All OMC modes cleared. You are free to start fresh."
@@ -367,6 +380,20 @@ if [[ -f .omc/ralph-state.json ]]; then
       fi
     fi
 
+    # Clean linked ecomode if present
+    LINKED_ECO=$(echo "$RALPH_STATE" | jq -r '.linked_ecomode // false')
+
+    if [[ "$LINKED_ECO" == "true" ]] && [[ -f .omc/ecomode-state.json ]]; then
+      ECO_STATE=$(cat .omc/ecomode-state.json)
+      ECO_LINKED=$(echo "$ECO_STATE" | jq -r '.linked_to_ralph // false')
+
+      if [[ "$ECO_LINKED" == "true" ]]; then
+        rm -f .omc/ecomode-state.json
+        rm -f ~/.claude/ecomode-state.json
+        echo "Cleaned up: ecomode (linked to ralph)"
+      fi
+    fi
+
     # Clean ralph state (both local and global)
     rm -f .omc/ralph-state.json
     rm -f ~/.claude/ralph-state.json
@@ -402,7 +429,30 @@ if [[ -f .omc/ultrawork-state.json ]]; then
   fi
 fi
 
-# 4. Check UltraQA (standalone)
+# 4. Check Ecomode (standalone, not linked)
+if [[ -f .omc/ecomode-state.json ]]; then
+  ECO_STATE=$(cat .omc/ecomode-state.json)
+  ECO_ACTIVE=$(echo "$ECO_STATE" | jq -r '.active // false')
+
+  if [[ "$ECO_ACTIVE" == "true" ]]; then
+    LINKED=$(echo "$ECO_STATE" | jq -r '.linked_to_ralph // false')
+
+    if [[ "$LINKED" == "true" ]]; then
+      echo "Warning: Ecomode is linked to Ralph, but Ralph is not active."
+      echo "Clearing ecomode state anyway..."
+    fi
+
+    # Remove both local and global state
+    rm -f .omc/ecomode-state.json
+    rm -f ~/.claude/ecomode-state.json
+
+    echo "Ecomode cancelled. Token-efficient execution mode deactivated."
+    CANCELLED_ANYTHING=true
+    exit 0
+  fi
+fi
+
+# 5. Check UltraQA (standalone)
 if [[ -f .omc/ultraqa-state.json ]]; then
   ULTRAQA_STATE=$(cat .omc/ultraqa-state.json)
   ULTRAQA_ACTIVE=$(echo "$ULTRAQA_STATE" | jq -r '.active // false')
@@ -423,6 +473,7 @@ if [[ "$CANCELLED_ANYTHING" == "false" ]]; then
   echo "  - Autopilot (.omc/autopilot-state.json)"
   echo "  - Ralph (.omc/ralph-state.json)"
   echo "  - Ultrawork (.omc/ultrawork-state.json)"
+  echo "  - Ecomode (.omc/ecomode-state.json)"
   echo "  - UltraQA (.omc/ultraqa-state.json)"
   echo ""
   echo "Use --force to clear all state files anyway."
@@ -436,6 +487,7 @@ fi
 | Autopilot | "Autopilot cancelled at phase: {phase}. Progress preserved for resume." |
 | Ralph | "Ralph cancelled. Persistent mode deactivated." |
 | Ultrawork | "Ultrawork cancelled. Parallel execution mode deactivated." |
+| Ecomode | "Ecomode cancelled. Token-efficient execution mode deactivated." |
 | UltraQA | "UltraQA cancelled. QA cycling workflow stopped." |
 | Force | "All OMC modes cleared. You are free to start fresh." |
 | None | "No active OMC modes detected." |
@@ -452,7 +504,7 @@ fi
 ## Notes
 
 - **Dependency-aware**: Autopilot cancellation cleans up Ralph and UltraQA
-- **Link-aware**: Ralph cancellation cleans up linked Ultrawork
+- **Link-aware**: Ralph cancellation cleans up linked Ultrawork or Ecomode
 - **Safe**: Only clears linked Ultrawork, preserves standalone Ultrawork
 - **Dual-location**: Clears both `.omc/` and `~/.claude/` state files
 - **Resume-friendly**: Autopilot state is preserved for seamless resume

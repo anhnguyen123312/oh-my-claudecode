@@ -168,11 +168,11 @@ Or configure manually in `~/.claude/settings.json`:
   "mcpServers": {
     "context7": {
       "command": "npx",
-      "args": ["-y", "@context7/mcp"]
+      "args": ["-y", "@upstash/context7-mcp"]
     },
     "exa": {
       "command": "npx",
-      "args": ["-y", "@anthropic/exa-mcp-server"],
+      "args": ["-y", "exa-mcp-server"],
       "env": {
         "EXA_API_KEY": "your-key-here"
       }

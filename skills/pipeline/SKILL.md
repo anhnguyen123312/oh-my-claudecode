@@ -1,7 +1,6 @@
 ---
 name: pipeline
 description: Chain agents together in sequential or branching workflows with data passing
-user-invocable: true
 ---
 
 # Pipeline Skill

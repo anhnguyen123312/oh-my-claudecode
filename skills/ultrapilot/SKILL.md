@@ -1,7 +1,6 @@
 ---
 name: ultrapilot
 description: Parallel autopilot with file ownership partitioning
-user-invocable: true
 ---
 
 # Ultrapilot Skill
