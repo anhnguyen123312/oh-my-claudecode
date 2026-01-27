@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.2] - 2026-01-27
+
+### Fixed
+
+#### Security Hardening
+- **fix(security):** Extend DANGEROUS_SHELL_CHARS regex for complete injection prevention (#146)
+  - Added `\r`, `\t`, `\0`, `{}`, `[]`, `*`, `?`, `~`, `!`, `#` to blocked characters
+  - Intentionally excludes quotes (`"'`) for paths with spaces
+  - 20 new test cases covering brace expansion, CRLF, null bytes, globs, tilde, history, comment injection
+
+- **fix(plugin-patterns):** Add path traversal prevention with `isValidFilePath()` (#148)
+  - Blocks shell metacharacters in file paths
+  - Blocks `..` path traversal and absolute paths
+  - Applied to `formatFile()` and `lintFile()` functions
+
+---
+
 ## [3.7.1] - 2026-01-27
 
 ### Fixed
