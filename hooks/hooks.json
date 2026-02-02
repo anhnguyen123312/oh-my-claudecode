@@ -28,9 +28,7 @@
             "timeout": 5
           }
         ]
-      }
-    ],
-    "Setup": [
+      },
       {
         "matcher": "init",
         "hooks": [
