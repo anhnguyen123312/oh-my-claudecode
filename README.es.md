@@ -38,17 +38,13 @@ Eso es todo. Todo lo demás es automático.
 
 ### Actualizar
 
-Despues de actualizar el plugin, **siempre reconstruye y vuelve a ejecutar el setup**:
-
 ```bash
 # 1. Actualizar el plugin
 /plugin install oh-my-claudecode
 
-# 2. Reconstruir el plugin y reconfigurar
+# 2. Volver a ejecutar el setup para actualizar la configuracion
 /oh-my-claudecode:omc-setup
 ```
-
-> El plugin debe reconstruirse despues de cada actualizacion porque el directorio `dist/` (codigo compilado) no esta incluido en git — se genera durante la instalacion.
 
 Si experimentas problemas despues de actualizar, limpia la cache antigua del plugin:
 
