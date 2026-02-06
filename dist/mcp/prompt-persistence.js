@@ -8,7 +8,19 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, renameSync, readdir
 import { join } from 'path';
 import { randomBytes } from 'crypto';
 import { getWorktreeRoot } from '../lib/worktree-paths.js';
-import { isJobDbInitialized, upsertJob, getJob, getActiveJobs as getActiveJobsFromDb, cleanupOldJobs as cleanupOldJobsInDb } from './job-state-db.js';
+import { initJobDb, isJobDbInitialized, upsertJob, getJob, getActiveJobs as getActiveJobsFromDb, cleanupOldJobs as cleanupOldJobsInDb } from './job-state-db.js';
+// Lazy-init guard: fires initJobDb at most once per process.
+// initJobDb is async (dynamic import of better-sqlite3). If it hasn't resolved
+// yet, isJobDbInitialized() returns false and callers use JSON fallback.
+// This is best-effort: the first 1-2 status writes may be JSON-only.
+let _dbInitAttempted = false;
+function ensureJobDb(workingDirectory) {
+    if (_dbInitAttempted || isJobDbInitialized())
+        return;
+    _dbInitAttempted = true;
+    const root = getWorktreeRoot(workingDirectory) || workingDirectory || process.cwd();
+    initJobDb(root).catch(() => { });
+}
 function yamlString(value) {
     // JSON strings are valid YAML scalars and safely escape quotes/newlines.
     return JSON.stringify(value);
@@ -185,6 +197,7 @@ export function getStatusFilePath(provider, slug, promptId, workingDirectory) {
  * Write job status atomically (temp file + rename)
  */
 export function writeJobStatus(status, workingDirectory) {
+    ensureJobDb(workingDirectory);
     try {
         const promptsDir = getPromptsDir(workingDirectory);
         mkdirSync(promptsDir, { recursive: true });
@@ -205,6 +218,7 @@ export function writeJobStatus(status, workingDirectory) {
  * Read job status from disk
  */
 export function readJobStatus(provider, slug, promptId, workingDirectory) {
+    ensureJobDb(workingDirectory);
     // Try SQLite first if available
     if (isJobDbInitialized()) {
         const dbResult = getJob(provider, promptId);
@@ -261,6 +275,7 @@ export function readCompletedResponse(provider, slug, promptId, workingDirectory
  * List all active (spawned or running) background jobs
  */
 export function listActiveJobs(provider, workingDirectory) {
+    ensureJobDb(workingDirectory);
     // Try SQLite first if available
     if (isJobDbInitialized()) {
         return getActiveJobsFromDb(provider);
@@ -302,6 +317,7 @@ export function listActiveJobs(provider, workingDirectory) {
  * Mark stale background jobs (older than maxAgeMs) as timed out
  */
 export function cleanupStaleJobs(maxAgeMs, workingDirectory) {
+    ensureJobDb(workingDirectory);
     // Also cleanup old terminal jobs in SQLite
     if (isJobDbInitialized()) {
         cleanupOldJobsInDb(maxAgeMs);

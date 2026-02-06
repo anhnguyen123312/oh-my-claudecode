@@ -13744,30 +13744,53 @@ function detectGeminiCli(useCache = true) {
   }
 }
 
-// src/agents/utils.ts
+// src/lib/worktree-paths.ts
+var import_child_process2 = require("child_process");
 var import_fs = require("fs");
 var import_path = require("path");
+var worktreeCache = null;
+function getWorktreeRoot(cwd) {
+  const effectiveCwd = cwd || process.cwd();
+  if (worktreeCache && worktreeCache.cwd === effectiveCwd) {
+    return worktreeCache.root || null;
+  }
+  try {
+    const root = (0, import_child_process2.execSync)("git rev-parse --show-toplevel", {
+      cwd: effectiveCwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"]
+    }).trim();
+    worktreeCache = { cwd: effectiveCwd, root };
+    return root;
+  } catch {
+    return null;
+  }
+}
+
+// src/agents/utils.ts
+var import_fs2 = require("fs");
+var import_path2 = require("path");
 var import_url = require("url");
 var import_meta = {};
 function getPackageDir() {
   const __filename = (0, import_url.fileURLToPath)(import_meta.url);
-  const __dirname = (0, import_path.dirname)(__filename);
-  return (0, import_path.join)(__dirname, "..", "..");
+  const __dirname = (0, import_path2.dirname)(__filename);
+  return (0, import_path2.join)(__dirname, "..", "..");
 }
 function loadAgentPrompt(agentName) {
   if (!/^[a-z0-9-]+$/i.test(agentName)) {
     throw new Error(`Invalid agent name: contains disallowed characters`);
   }
   try {
-    const agentsDir = (0, import_path.join)(getPackageDir(), "agents");
-    const agentPath = (0, import_path.join)(agentsDir, `${agentName}.md`);
-    const resolvedPath = (0, import_path.resolve)(agentPath);
-    const resolvedAgentsDir = (0, import_path.resolve)(agentsDir);
-    const rel = (0, import_path.relative)(resolvedAgentsDir, resolvedPath);
-    if (rel.startsWith("..") || (0, import_path.isAbsolute)(rel)) {
+    const agentsDir = (0, import_path2.join)(getPackageDir(), "agents");
+    const agentPath = (0, import_path2.join)(agentsDir, `${agentName}.md`);
+    const resolvedPath = (0, import_path2.resolve)(agentPath);
+    const resolvedAgentsDir = (0, import_path2.resolve)(agentsDir);
+    const rel = (0, import_path2.relative)(resolvedAgentsDir, resolvedPath);
+    if (rel.startsWith("..") || (0, import_path2.isAbsolute)(rel)) {
       throw new Error(`Invalid agent name: path traversal detected`);
     }
-    const content = (0, import_fs.readFileSync)(agentPath, "utf-8");
+    const content = (0, import_fs2.readFileSync)(agentPath, "utf-8");
     const match = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
     return match ? match[1].trim() : content.trim();
   } catch (error2) {
@@ -13814,34 +13837,22 @@ var import_fs4 = require("fs");
 var import_path4 = require("path");
 var import_crypto = require("crypto");
 
-// src/lib/worktree-paths.ts
-var import_child_process2 = require("child_process");
-var import_fs2 = require("fs");
-var import_path2 = require("path");
-var worktreeCache = null;
-function getWorktreeRoot(cwd) {
-  const effectiveCwd = cwd || process.cwd();
-  if (worktreeCache && worktreeCache.cwd === effectiveCwd) {
-    return worktreeCache.root || null;
-  }
-  try {
-    const root = (0, import_child_process2.execSync)("git rev-parse --show-toplevel", {
-      cwd: effectiveCwd,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"]
-    }).trim();
-    worktreeCache = { cwd: effectiveCwd, root };
-    return root;
-  } catch {
-    return null;
-  }
-}
-
 // src/mcp/job-state-db.ts
 var import_fs3 = require("fs");
 var import_path3 = require("path");
+var DB_SCHEMA_VERSION = 1;
 var DEFAULT_CLEANUP_MAX_AGE_MS = 24 * 60 * 60 * 1e3;
+var Database = null;
 var db = null;
+function getDbPath(cwd) {
+  return (0, import_path3.join)(cwd, ".omc", "state", "jobs.db");
+}
+function ensureStateDir(cwd) {
+  const stateDir = (0, import_path3.join)(cwd, ".omc", "state");
+  if (!(0, import_fs3.existsSync)(stateDir)) {
+    (0, import_fs3.mkdirSync)(stateDir, { recursive: true });
+  }
+}
 function rowToJobStatus(row) {
   return {
     provider: row.provider,
@@ -13860,6 +13871,79 @@ function rowToJobStatus(row) {
     fallbackModel: row.fallback_model ?? void 0,
     killedByUser: row.killed_by_user === 1 ? true : void 0
   };
+}
+async function initJobDb(cwd) {
+  try {
+    if (!Database) {
+      try {
+        const betterSqlite3 = await import("better-sqlite3");
+        Database = betterSqlite3.default;
+      } catch (importError) {
+        const errorMessage = importError instanceof Error ? importError.message : String(importError);
+        console.error(
+          "[job-state-db] Failed to load better-sqlite3:",
+          errorMessage
+        );
+        console.error(
+          "[job-state-db] Install with: npm install better-sqlite3"
+        );
+        return false;
+      }
+    }
+    if (!Database) {
+      return false;
+    }
+    ensureStateDir(cwd);
+    const dbPath = getDbPath(cwd);
+    db = new Database(dbPath);
+    db.pragma("journal_mode = WAL");
+    db.exec(`
+      -- Schema version tracking
+      CREATE TABLE IF NOT EXISTS schema_info (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+
+      -- Job metadata for Codex/Gemini background jobs
+      CREATE TABLE IF NOT EXISTS jobs (
+        job_id TEXT NOT NULL,
+        provider TEXT NOT NULL CHECK (provider IN ('codex', 'gemini')),
+        slug TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'spawned' CHECK (status IN ('spawned', 'running', 'completed', 'failed', 'timeout')),
+        pid INTEGER,
+        prompt_file TEXT NOT NULL,
+        response_file TEXT NOT NULL,
+        model TEXT NOT NULL,
+        agent_role TEXT NOT NULL,
+        spawned_at TEXT NOT NULL,
+        completed_at TEXT,
+        error TEXT,
+        used_fallback INTEGER DEFAULT 0,
+        fallback_model TEXT,
+        killed_by_user INTEGER DEFAULT 0,
+        PRIMARY KEY (provider, job_id)
+      );
+
+      -- Indexes for common query patterns
+      CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+      CREATE INDEX IF NOT EXISTS idx_jobs_provider ON jobs(provider);
+      CREATE INDEX IF NOT EXISTS idx_jobs_spawned_at ON jobs(spawned_at);
+      CREATE INDEX IF NOT EXISTS idx_jobs_provider_status ON jobs(provider, status);
+    `);
+    const versionStmt = db.prepare(
+      "SELECT value FROM schema_info WHERE key = 'version'"
+    );
+    const versionRow = versionStmt.get();
+    const _currentVersion = versionRow ? parseInt(versionRow.value, 10) : 0;
+    const setVersion = db.prepare(
+      "INSERT OR REPLACE INTO schema_info (key, value) VALUES (?, ?)"
+    );
+    setVersion.run("version", String(DB_SCHEMA_VERSION));
+    return true;
+  } catch (error2) {
+    console.error("[job-state-db] Failed to initialize database:", error2);
+    return false;
+  }
 }
 function isJobDbInitialized() {
   return db !== null;
@@ -13912,6 +13996,28 @@ function getJob(provider, jobId) {
     return null;
   }
 }
+function getJobsByStatus(provider, status) {
+  if (!db) return [];
+  try {
+    let stmt;
+    let rows;
+    if (provider) {
+      stmt = db.prepare(
+        "SELECT * FROM jobs WHERE provider = ? AND status = ? ORDER BY spawned_at DESC"
+      );
+      rows = stmt.all(provider, status);
+    } else {
+      stmt = db.prepare(
+        "SELECT * FROM jobs WHERE status = ? ORDER BY spawned_at DESC"
+      );
+      rows = stmt.all(status);
+    }
+    return rows.map(rowToJobStatus);
+  } catch (error2) {
+    console.error("[job-state-db] Failed to get jobs by status:", error2);
+    return [];
+  }
+}
 function getActiveJobs(provider) {
   if (!db) return [];
   try {
@@ -13934,8 +14040,73 @@ function getActiveJobs(provider) {
     return [];
   }
 }
+function updateJobStatus(provider, jobId, updates) {
+  if (!db) return false;
+  try {
+    const setClauses = [];
+    const values = [];
+    if (updates.status !== void 0) {
+      setClauses.push("status = ?");
+      values.push(updates.status);
+    }
+    if (updates.pid !== void 0) {
+      setClauses.push("pid = ?");
+      values.push(updates.pid ?? null);
+    }
+    if (updates.completedAt !== void 0) {
+      setClauses.push("completed_at = ?");
+      values.push(updates.completedAt ?? null);
+    }
+    if (updates.error !== void 0) {
+      setClauses.push("error = ?");
+      values.push(updates.error ?? null);
+    }
+    if (updates.usedFallback !== void 0) {
+      setClauses.push("used_fallback = ?");
+      values.push(updates.usedFallback ? 1 : 0);
+    }
+    if (updates.fallbackModel !== void 0) {
+      setClauses.push("fallback_model = ?");
+      values.push(updates.fallbackModel ?? null);
+    }
+    if (updates.killedByUser !== void 0) {
+      setClauses.push("killed_by_user = ?");
+      values.push(updates.killedByUser ? 1 : 0);
+    }
+    if (updates.slug !== void 0) {
+      setClauses.push("slug = ?");
+      values.push(updates.slug);
+    }
+    if (updates.model !== void 0) {
+      setClauses.push("model = ?");
+      values.push(updates.model);
+    }
+    if (updates.agentRole !== void 0) {
+      setClauses.push("agent_role = ?");
+      values.push(updates.agentRole);
+    }
+    if (setClauses.length === 0) return true;
+    values.push(provider, jobId);
+    const stmt = db.prepare(
+      `UPDATE jobs SET ${setClauses.join(", ")} WHERE provider = ? AND job_id = ?`
+    );
+    stmt.run(...values);
+    return true;
+  } catch (error2) {
+    console.error("[job-state-db] Failed to update job status:", error2);
+    return false;
+  }
+}
 
 // src/mcp/prompt-persistence.ts
+var _dbInitAttempted = false;
+function ensureJobDb(workingDirectory) {
+  if (_dbInitAttempted || isJobDbInitialized()) return;
+  _dbInitAttempted = true;
+  const root = getWorktreeRoot(workingDirectory) || workingDirectory || process.cwd();
+  initJobDb(root).catch(() => {
+  });
+}
 function yamlString(value) {
   return JSON.stringify(value);
 }
@@ -14050,6 +14221,7 @@ function getStatusFilePath(provider, slug, promptId, workingDirectory) {
   return (0, import_path4.join)(promptsDir, `${provider}-status-${slug}-${promptId}.json`);
 }
 function writeJobStatus(status, workingDirectory) {
+  ensureJobDb(workingDirectory);
   try {
     const promptsDir = getPromptsDir(workingDirectory);
     (0, import_fs4.mkdirSync)(promptsDir, { recursive: true });
@@ -14065,6 +14237,7 @@ function writeJobStatus(status, workingDirectory) {
   }
 }
 function readJobStatus(provider, slug, promptId, workingDirectory) {
+  ensureJobDb(workingDirectory);
   if (isJobDbInitialized()) {
     const dbResult = getJob(provider, promptId);
     if (dbResult) return dbResult;
@@ -14099,6 +14272,7 @@ function readCompletedResponse(provider, slug, promptId, workingDirectory) {
   }
 }
 function listActiveJobs(provider, workingDirectory) {
+  ensureJobDb(workingDirectory);
   if (isJobDbInitialized()) {
     return getActiveJobs(provider);
   }
@@ -14164,7 +14338,10 @@ function executeGemini(prompt, model, cwd) {
     }
     const child = (0, import_child_process3.spawn)("gemini", args, {
       stdio: ["pipe", "pipe", "pipe"],
-      ...cwd ? { cwd } : {}
+      ...cwd ? { cwd } : {},
+      // shell: true needed on Windows for .cmd/.bat executables.
+      // Safe: args are array-based and model names are regex-validated.
+      ...process.platform === "win32" ? { shell: true } : {}
     });
     const timeoutHandle = setTimeout(() => {
       if (!settled) {
@@ -14220,9 +14397,12 @@ function executeGeminiBackground(fullPrompt, model, jobMeta, workingDirectory) {
       args.push("--model", model);
     }
     const child = (0, import_child_process3.spawn)("gemini", args, {
-      detached: true,
+      detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
-      ...workingDirectory ? { cwd: workingDirectory } : {}
+      ...workingDirectory ? { cwd: workingDirectory } : {},
+      // shell: true needed on Windows for .cmd/.bat executables.
+      // Safe: args are array-based and model names are regex-validated.
+      ...process.platform === "win32" ? { shell: true } : {}
     });
     if (!child.pid) {
       return { error: "Failed to get process ID" };
@@ -14340,12 +14520,12 @@ function validateAndReadFile(filePath, baseDir) {
     const cwd = baseDir || process.cwd();
     const cwdReal = (0, import_fs5.realpathSync)(cwd);
     const relAbs = (0, import_path5.relative)(cwdReal, resolvedAbs);
-    if (relAbs === "" || relAbs === ".." || relAbs.startsWith(".." + import_path5.sep)) {
+    if (relAbs === ".." || relAbs.startsWith(".." + import_path5.sep) || (0, import_path5.isAbsolute)(relAbs)) {
       return `[BLOCKED] File '${filePath}' is outside the working directory. Only files within the project are allowed.`;
     }
     const resolvedReal = (0, import_fs5.realpathSync)(resolvedAbs);
     const relReal = (0, import_path5.relative)(cwdReal, resolvedReal);
-    if (relReal === "" || relReal === ".." || relReal.startsWith(".." + import_path5.sep)) {
+    if (relReal === ".." || relReal.startsWith(".." + import_path5.sep) || (0, import_path5.isAbsolute)(relReal)) {
       return `[BLOCKED] File '${filePath}' is outside the working directory. Only files within the project are allowed.`;
     }
     const stats = (0, import_fs5.statSync)(resolvedReal);
@@ -14372,6 +14552,26 @@ async function handleAskGemini(args) {
       content: [{ type: "text", text: `working_directory '${args.working_directory}' does not exist or is not accessible: ${err.message}` }],
       isError: true
     };
+  }
+  if (process.env.OMC_ALLOW_EXTERNAL_WORKDIR !== "1") {
+    const worktreeRoot = getWorktreeRoot(baseDirReal);
+    if (worktreeRoot) {
+      let worktreeReal;
+      try {
+        worktreeReal = (0, import_fs5.realpathSync)(worktreeRoot);
+      } catch {
+        worktreeReal = "";
+      }
+      if (worktreeReal) {
+        const relToWorktree = (0, import_path5.relative)(worktreeReal, baseDirReal);
+        if (relToWorktree.startsWith("..") || (0, import_path5.isAbsolute)(relToWorktree)) {
+          return {
+            content: [{ type: "text", text: `working_directory '${args.working_directory}' is outside the project worktree (${worktreeRoot}). Set OMC_ALLOW_EXTERNAL_WORKDIR=1 to bypass.` }],
+            isError: true
+          };
+        }
+      }
+    }
   }
   if (!agent_role || !GEMINI_VALID_ROLES.includes(agent_role)) {
     return {
@@ -14404,7 +14604,7 @@ async function handleAskGemini(args) {
   const resolvedPath = (0, import_path5.resolve)(baseDir, args.prompt_file);
   const cwdReal = (0, import_fs5.realpathSync)(baseDir);
   const relPath = (0, import_path5.relative)(cwdReal, resolvedPath);
-  if (relPath === "" || relPath === ".." || relPath.startsWith(".." + import_path5.sep)) {
+  if (relPath === ".." || relPath.startsWith(".." + import_path5.sep) || (0, import_path5.isAbsolute)(relPath)) {
     return {
       content: [{ type: "text", text: `prompt_file '${args.prompt_file}' is outside the working directory.` }],
       isError: true
@@ -14420,7 +14620,7 @@ async function handleAskGemini(args) {
     };
   }
   const relReal = (0, import_path5.relative)(cwdReal, resolvedReal);
-  if (relReal === "" || relReal === ".." || relReal.startsWith(".." + import_path5.sep)) {
+  if (relReal === ".." || relReal.startsWith(".." + import_path5.sep) || (0, import_path5.isAbsolute)(relReal)) {
     return {
       content: [{ type: "text", text: `prompt_file '${args.prompt_file}' resolves to a path outside the working directory.` }],
       isError: true
@@ -14858,6 +15058,46 @@ async function handleKillJob(provider, jobId, signal = "SIGTERM") {
   }
   const found = findJobStatusFile(provider, jobId);
   if (!found) {
+    if (isJobDbInitialized()) {
+      const dbJob = getJob(provider, jobId);
+      if (dbJob) {
+        if (dbJob.status !== "spawned" && dbJob.status !== "running") {
+          return textResult(`Job ${jobId} is already in terminal state: ${dbJob.status}. Cannot kill.`, true);
+        }
+        if (!dbJob.pid || !Number.isInteger(dbJob.pid) || dbJob.pid <= 0 || dbJob.pid > 4194304) {
+          return textResult(`Job ${jobId} has no valid PID recorded. Cannot send signal.`, true);
+        }
+        const isOurPid2 = provider === "codex" ? isSpawnedPid2(dbJob.pid) : isSpawnedPid(dbJob.pid);
+        if (!isOurPid2) {
+          return textResult(`Job ${jobId} PID ${dbJob.pid} was not spawned by this process. Refusing to send signal for safety.`, true);
+        }
+        try {
+          if (process.platform !== "win32") {
+            process.kill(-dbJob.pid, signal);
+          } else {
+            process.kill(dbJob.pid, signal);
+          }
+          updateJobStatus(provider, jobId, {
+            status: "failed",
+            killedByUser: true,
+            completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+            error: `Killed by user (signal: ${signal})`
+          });
+          return textResult(`Sent ${signal} to job ${jobId} (PID ${dbJob.pid}). Job marked as failed.`);
+        } catch (err) {
+          if (err.code === "ESRCH") {
+            updateJobStatus(provider, jobId, {
+              status: "failed",
+              killedByUser: true,
+              completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+              error: `Killed by user (process already exited, signal: ${signal})`
+            });
+            return textResult(`Process ${dbJob.pid} already exited. Job marked as failed.`);
+          }
+          return textResult(`Failed to kill process ${dbJob.pid}: ${err.message}`, true);
+        }
+      }
+    }
     return textResult(`No job found with ID: ${jobId}`, true);
   }
   const status = readJobStatus(provider, found.slug, jobId);
@@ -14981,6 +15221,49 @@ ${lines2.join("\n\n")}`);
     return textResult(`**${limited.length} active ${provider} job(s):**
 
 ${lines.join("\n\n")}`);
+  }
+  if (isJobDbInitialized()) {
+    let dbJobs = [];
+    if (statusFilter === "completed") {
+      dbJobs = getJobsByStatus(provider, "completed");
+    } else if (statusFilter === "failed") {
+      dbJobs = [
+        ...getJobsByStatus(provider, "failed"),
+        ...getJobsByStatus(provider, "timeout")
+      ];
+    } else if (statusFilter === "all") {
+      dbJobs = [
+        ...getActiveJobs(provider),
+        ...getJobsByStatus(provider, "completed"),
+        ...getJobsByStatus(provider, "failed"),
+        ...getJobsByStatus(provider, "timeout")
+      ];
+    }
+    const seen = /* @__PURE__ */ new Set();
+    const uniqueJobs = [];
+    for (const job of dbJobs) {
+      if (!seen.has(job.jobId)) {
+        seen.add(job.jobId);
+        uniqueJobs.push(job);
+      }
+    }
+    if (uniqueJobs.length > 0) {
+      uniqueJobs.sort((a, b) => new Date(b.spawnedAt).getTime() - new Date(a.spawnedAt).getTime());
+      const limited = uniqueJobs.slice(0, limit);
+      const lines = limited.map((job) => {
+        const parts = [
+          `- **${job.jobId}** [${job.status}] ${job.provider}/${job.model} (${job.agentRole})`,
+          `  Spawned: ${job.spawnedAt}`
+        ];
+        if (job.completedAt) parts.push(`  Completed: ${job.completedAt}`);
+        if (job.error) parts.push(`  Error: ${job.error}`);
+        if (job.pid) parts.push(`  PID: ${job.pid}`);
+        return parts.join("\n");
+      });
+      return textResult(`**${limited.length} ${provider} job(s) found:**
+
+${lines.join("\n\n")}`);
+    }
   }
   const promptsDir = getPromptsDir();
   if (!(0, import_fs7.existsSync)(promptsDir)) {

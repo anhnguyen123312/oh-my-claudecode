@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.7] - 2026-02-06
+
+### Added
+
+- **SQLite-backed MCP job state storage** - New `job-state-db.ts` with WAL-mode SQLite for reliable job state persistence. Includes JSON fallback compatibility for environments without native modules.
+- **Improved job management reliability** - SQLite-first reads for check/wait/list/kill flows with automatic fallback to JSON file-based storage.
+- **PreCompact hook job summaries** - Pre-compact hook now injects job summary data from SQLite into checkpoint content.
+- **Comprehensive test coverage** - 74 new unit tests for job-state-db + 16 integration tests for SQLite job management.
+
+### Fixed
+
+- **Windows compatibility** - Platform-aware path normalization (`toForwardSlash()`), `pathToFileURL()` for bridge detection, cross-platform config/data directory resolution (`getConfigDir()`/`getDataDir()`), and `shell: true` for CLI spawn on Windows.
+- **Path traversal hardening** - Strengthened `isAllowedPath` and boundary checks with `isAbsolute()` guard for Windows drive-letter edge cases. Added security regression tests.
+- **Worktree boundary validation** - Hardened and clarified worktree boundary enforcement for MCP file/path handling across codex-core and gemini-core.
+
+### Changed
+
+- **Teleport command** - Now uses `git worktree list` and `fs.rmSync` with cross-platform `path.isAbsolute()` checks.
+- **LSP client** - Updated URI construction to use `pathToFileURL()` for Windows compatibility.
+
 ## [4.0.6] - 2026-02-06
 
 ### Added

@@ -15,7 +15,7 @@ import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { isSpawnedPid as isCodexSpawnedPid } from './codex-core.js';
 import { isSpawnedPid as isGeminiSpawnedPid } from './gemini-core.js';
-import { isJobDbInitialized, getJob, getActiveJobs as getActiveJobsFromDb } from './job-state-db.js';
+import { isJobDbInitialized, getJob, getActiveJobs as getActiveJobsFromDb, getJobsByStatus, updateJobStatus } from './job-state-db.js';
 /** Signals allowed for kill_job. SIGKILL excluded - too dangerous for process groups. */
 const ALLOWED_SIGNALS = new Set(['SIGTERM', 'SIGINT']);
 // ---------------------------------------------------------------------------
@@ -263,6 +263,53 @@ export async function handleKillJob(provider, jobId, signal = 'SIGTERM') {
     }
     const found = findJobStatusFile(provider, jobId);
     if (!found) {
+        // SQLite fallback: try to find job in database when JSON file is missing
+        if (isJobDbInitialized()) {
+            const dbJob = getJob(provider, jobId);
+            if (dbJob) {
+                if (dbJob.status !== 'spawned' && dbJob.status !== 'running') {
+                    return textResult(`Job ${jobId} is already in terminal state: ${dbJob.status}. Cannot kill.`, true);
+                }
+                if (!dbJob.pid || !Number.isInteger(dbJob.pid) || dbJob.pid <= 0 || dbJob.pid > 4194304) {
+                    return textResult(`Job ${jobId} has no valid PID recorded. Cannot send signal.`, true);
+                }
+                const isOurPid = provider === 'codex' ? isCodexSpawnedPid(dbJob.pid) : isGeminiSpawnedPid(dbJob.pid);
+                if (!isOurPid) {
+                    return textResult(`Job ${jobId} PID ${dbJob.pid} was not spawned by this process. Refusing to send signal for safety.`, true);
+                }
+                // Send signal first, THEN update status based on outcome
+                try {
+                    if (process.platform !== 'win32') {
+                        process.kill(-dbJob.pid, signal);
+                    }
+                    else {
+                        process.kill(dbJob.pid, signal);
+                    }
+                    // Signal sent successfully - mark as killed in DB
+                    updateJobStatus(provider, jobId, {
+                        status: 'failed',
+                        killedByUser: true,
+                        completedAt: new Date().toISOString(),
+                        error: `Killed by user (signal: ${signal})`,
+                    });
+                    return textResult(`Sent ${signal} to job ${jobId} (PID ${dbJob.pid}). Job marked as failed.`);
+                }
+                catch (err) {
+                    if (err.code === 'ESRCH') {
+                        // Process already exited - mark as failed
+                        updateJobStatus(provider, jobId, {
+                            status: 'failed',
+                            killedByUser: true,
+                            completedAt: new Date().toISOString(),
+                            error: `Killed by user (process already exited, signal: ${signal})`,
+                        });
+                        return textResult(`Process ${dbJob.pid} already exited. Job marked as failed.`);
+                    }
+                    // Other kill errors - do NOT update status to avoid inconsistent state
+                    return textResult(`Failed to kill process ${dbJob.pid}: ${err.message}`, true);
+                }
+            }
+        }
         return textResult(`No job found with ID: ${jobId}`, true);
     }
     const status = readJobStatus(provider, found.slug, jobId);
@@ -395,6 +442,53 @@ export async function handleListJobs(provider, statusFilter = 'active', limit = 
             return parts.join('\n');
         });
         return textResult(`**${limited.length} active ${provider} job(s):**\n\n${lines.join('\n\n')}`);
+    }
+    // Try SQLite first for non-active filters
+    if (isJobDbInitialized()) {
+        let dbJobs = [];
+        if (statusFilter === 'completed') {
+            dbJobs = getJobsByStatus(provider, 'completed');
+        }
+        else if (statusFilter === 'failed') {
+            dbJobs = [
+                ...getJobsByStatus(provider, 'failed'),
+                ...getJobsByStatus(provider, 'timeout'),
+            ];
+        }
+        else if (statusFilter === 'all') {
+            dbJobs = [
+                ...getActiveJobsFromDb(provider),
+                ...getJobsByStatus(provider, 'completed'),
+                ...getJobsByStatus(provider, 'failed'),
+                ...getJobsByStatus(provider, 'timeout'),
+            ];
+        }
+        const seen = new Set();
+        const uniqueJobs = [];
+        for (const job of dbJobs) {
+            if (!seen.has(job.jobId)) {
+                seen.add(job.jobId);
+                uniqueJobs.push(job);
+            }
+        }
+        if (uniqueJobs.length > 0) {
+            uniqueJobs.sort((a, b) => new Date(b.spawnedAt).getTime() - new Date(a.spawnedAt).getTime());
+            const limited = uniqueJobs.slice(0, limit);
+            const lines = limited.map((job) => {
+                const parts = [
+                    `- **${job.jobId}** [${job.status}] ${job.provider}/${job.model} (${job.agentRole})`,
+                    `  Spawned: ${job.spawnedAt}`,
+                ];
+                if (job.completedAt)
+                    parts.push(`  Completed: ${job.completedAt}`);
+                if (job.error)
+                    parts.push(`  Error: ${job.error}`);
+                if (job.pid)
+                    parts.push(`  PID: ${job.pid}`);
+                return parts.join('\n');
+            });
+            return textResult(`**${limited.length} ${provider} job(s) found:**\n\n${lines.join('\n\n')}`);
+        }
     }
     // For 'all', 'completed', 'failed': scan all status files for this provider
     const promptsDir = getPromptsDir();

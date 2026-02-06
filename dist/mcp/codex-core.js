@@ -11,6 +11,7 @@ import { spawn } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'fs';
 import { dirname, resolve, relative, sep, isAbsolute, basename, join } from 'path';
 import { detectCodexCli } from './cli-detection.js';
+import { getWorktreeRoot } from '../lib/worktree-paths.js';
 import { resolveSystemPrompt, buildPromptWithSystemContext } from './prompt-injection.js';
 import { persistPrompt, persistResponse, getExpectedResponsePath } from './prompt-persistence.js';
 import { writeJobStatus, getStatusFilePath, readJobStatus } from './prompt-persistence.js';
@@ -122,7 +123,10 @@ export function executeCodex(prompt, model, cwd) {
         const args = ['exec', '-m', model, '--json', '--full-auto'];
         const child = spawn('codex', args, {
             stdio: ['pipe', 'pipe', 'pipe'],
-            ...(cwd ? { cwd } : {})
+            ...(cwd ? { cwd } : {}),
+            // shell: true needed on Windows for .cmd/.bat executables.
+            // Safe: args are array-based and model names are regex-validated.
+            ...(process.platform === 'win32' ? { shell: true } : {})
         });
         // Manual timeout handling to ensure proper cleanup
         const timeoutHandle = setTimeout(() => {
@@ -234,9 +238,12 @@ export function executeCodexBackground(fullPrompt, modelInput, jobMeta, workingD
             validateModelName(tryModel);
             const args = ['exec', '-m', tryModel, '--json', '--full-auto'];
             const child = spawn('codex', args, {
-                detached: true,
+                detached: process.platform !== 'win32',
                 stdio: ['pipe', 'pipe', 'pipe'],
-                ...(workingDirectory ? { cwd: workingDirectory } : {})
+                ...(workingDirectory ? { cwd: workingDirectory } : {}),
+                // shell: true needed on Windows for .cmd/.bat executables.
+                // Safe: args are array-based and model names are regex-validated.
+                ...(process.platform === 'win32' ? { shell: true } : {})
             });
             if (!child.pid) {
                 return { error: 'Failed to get process ID' };
@@ -358,6 +365,8 @@ export function executeCodexBackground(fullPrompt, modelInput, jobMeta, workingD
                         model: tryModel,
                         status: 'completed',
                         completedAt: new Date().toISOString(),
+                        usedFallback: usedFallback || undefined,
+                        fallbackModel: usedFallback ? tryModel : undefined,
                     }, workingDirectory);
                 }
                 else {
@@ -403,13 +412,13 @@ export function validateAndReadFile(filePath, baseDir) {
         // Security: ensure file is within working directory (worktree boundary)
         const cwdReal = realpathSync(workingDir);
         const relAbs = relative(cwdReal, resolvedAbs);
-        if (relAbs === '' || relAbs === '..' || relAbs.startsWith('..' + sep)) {
+        if (relAbs === '..' || relAbs.startsWith('..' + sep) || isAbsolute(relAbs)) {
             return `[BLOCKED] File '${filePath}' is outside the working directory. Only files within the project are allowed.`;
         }
         // Symlink-safe check: ensure the real path also stays inside the boundary.
         const resolvedReal = realpathSync(resolvedAbs);
         const relReal = relative(cwdReal, resolvedReal);
-        if (relReal === '' || relReal === '..' || relReal.startsWith('..' + sep)) {
+        if (relReal === '..' || relReal.startsWith('..' + sep) || isAbsolute(relReal)) {
             return `[BLOCKED] File '${filePath}' is outside the working directory. Only files within the project are allowed.`;
         }
         const stats = statSync(resolvedReal);
@@ -444,6 +453,29 @@ export async function handleAskCodex(args) {
             content: [{ type: 'text', text: `working_directory '${args.working_directory}' does not exist or is not accessible: ${err.message}` }],
             isError: true
         };
+    }
+    // Security: validate working_directory is within worktree (unless bypass enabled)
+    if (process.env.OMC_ALLOW_EXTERNAL_WORKDIR !== '1') {
+        const worktreeRoot = getWorktreeRoot(baseDirReal);
+        if (worktreeRoot) {
+            let worktreeReal;
+            try {
+                worktreeReal = realpathSync(worktreeRoot);
+            }
+            catch {
+                // If worktree root can't be resolved, skip boundary check rather than break
+                worktreeReal = '';
+            }
+            if (worktreeReal) {
+                const relToWorktree = relative(worktreeReal, baseDirReal);
+                if (relToWorktree.startsWith('..') || isAbsolute(relToWorktree)) {
+                    return {
+                        content: [{ type: 'text', text: `working_directory '${args.working_directory}' is outside the project worktree (${worktreeRoot}). Set OMC_ALLOW_EXTERNAL_WORKDIR=1 to bypass.` }],
+                        isError: true
+                    };
+                }
+            }
+        }
     }
     // Validate agent_role
     if (!agent_role || !CODEX_VALID_ROLES.includes(agent_role)) {
@@ -481,7 +513,7 @@ export async function handleAskCodex(args) {
     const resolvedPath = resolve(baseDir, args.prompt_file);
     const cwdReal = realpathSync(baseDir);
     const relPath = relative(cwdReal, resolvedPath);
-    if (relPath === '' || relPath === '..' || relPath.startsWith('..' + sep)) {
+    if (relPath === '..' || relPath.startsWith('..' + sep) || isAbsolute(relPath)) {
         return {
             content: [{ type: 'text', text: `prompt_file '${args.prompt_file}' is outside the working directory.` }],
             isError: true
@@ -499,7 +531,7 @@ export async function handleAskCodex(args) {
         };
     }
     const relReal = relative(cwdReal, resolvedReal);
-    if (relReal === '' || relReal === '..' || relReal.startsWith('..' + sep)) {
+    if (relReal === '..' || relReal.startsWith('..' + sep) || isAbsolute(relReal)) {
         return {
             content: [{ type: 'text', text: `prompt_file '${args.prompt_file}' resolves to a path outside the working directory.` }],
             isError: true
@@ -673,7 +705,7 @@ ${resolvedPrompt}`;
                 // CLI didn't write the file, write parsed response ourselves
                 const outputPath = resolvedOutputPath;
                 const relOutput = relative(baseDirReal, outputPath);
-                if (relOutput === '' || relOutput.startsWith('..') || isAbsolute(relOutput)) {
+                if (relOutput.startsWith('..') || isAbsolute(relOutput)) {
                     console.warn(`[codex-core] output_file '${args.output_file}' resolves outside working directory, skipping write.`);
                 }
                 else {
