@@ -158,14 +158,23 @@ export function parseCodexOutput(output) {
 /**
  * Execute Codex CLI command and return the response
  */
-export function executeCodex(prompt, model, cwd) {
+export function executeCodex(prompt, model, cwd, options) {
     return new Promise((resolve, reject) => {
         validateModelName(model);
         let settled = false;
         const args = ['exec', '-m', model, '--json', '--full-auto'];
+        // Build env overrides for provider-specific credentials
+        const env = options?.apiKey || options?.baseUrl
+            ? {
+                ...process.env,
+                ...(options.apiKey ? { OPENAI_API_KEY: options.apiKey } : {}),
+                ...(options.baseUrl ? { OPENAI_BASE_URL: options.baseUrl } : {}),
+            }
+            : undefined;
         const child = spawn('codex', args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             ...(cwd ? { cwd } : {}),
+            ...(env ? { env } : {}),
             // shell: true needed on Windows for .cmd/.bat executables.
             // Safe: args are array-based and model names are regex-validated.
             ...(process.platform === 'win32' ? { shell: true } : {})
@@ -236,12 +245,12 @@ export function executeCodex(prompt, model, cwd) {
  * Execute Codex CLI with model fallback chain
  * Only falls back on model_not_found errors when model was not explicitly provided
  */
-export async function executeCodexWithFallback(prompt, model, cwd) {
+export async function executeCodexWithFallback(prompt, model, cwd, options) {
     const modelExplicit = model !== undefined && model !== null && model !== '';
     const effectiveModel = model || CODEX_DEFAULT_MODEL;
     // If model was explicitly provided, no fallback
     if (modelExplicit) {
-        const response = await executeCodex(prompt, effectiveModel, cwd);
+        const response = await executeCodex(prompt, effectiveModel, cwd, options);
         return { response, usedFallback: false, actualModel: effectiveModel };
     }
     // Try fallback chain
@@ -251,7 +260,7 @@ export async function executeCodexWithFallback(prompt, model, cwd) {
     let lastError = null;
     for (const tryModel of modelsToTry) {
         try {
-            const response = await executeCodex(prompt, tryModel, cwd);
+            const response = await executeCodex(prompt, tryModel, cwd, options);
             return {
                 response,
                 usedFallback: tryModel !== effectiveModel,
@@ -725,7 +734,10 @@ ${resolvedPrompt}`;
         expectedResponsePath ? `**Response File:** ${expectedResponsePath}` : null,
     ].filter(Boolean).join('\n');
     try {
-        const { response, usedFallback, actualModel } = await executeCodexWithFallback(fullPrompt, args.model, baseDir);
+        const providerOptions = args.api_key || args.base_url
+            ? { apiKey: args.api_key, baseUrl: args.base_url }
+            : undefined;
+        const { response, usedFallback, actualModel } = await executeCodexWithFallback(fullPrompt, args.model, baseDir, providerOptions);
         // Persist response to disk (audit trail)
         if (promptResult) {
             persistResponse({

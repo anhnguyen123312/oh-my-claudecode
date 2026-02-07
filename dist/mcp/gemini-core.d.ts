@@ -32,7 +32,10 @@ export declare function isGeminiRetryableError(stdout: string, stderr?: string):
 /**
  * Execute Gemini CLI command and return the response
  */
-export declare function executeGemini(prompt: string, model?: string, cwd?: string): Promise<string>;
+export declare function executeGemini(prompt: string, model?: string, cwd?: string, options?: {
+    apiKey?: string;
+    baseUrl?: string;
+}): Promise<string>;
 /**
  * Execute Gemini CLI in background with fallback chain support
  * Retries with next model on model errors and 429/rate-limit errors
@@ -69,6 +72,8 @@ export declare function handleAskGemini(args: {
     files?: string[];
     background?: boolean;
     working_directory?: string;
+    api_key?: string;
+    base_url?: string;
 }): Promise<{
     content: Array<{
         type: 'text';
