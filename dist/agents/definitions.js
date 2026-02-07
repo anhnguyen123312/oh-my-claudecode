@@ -8,6 +8,7 @@
  * 4. omcSystemPrompt for the main orchestrator
  */
 import { loadAgentPrompt, parseDisallowedTools } from './utils.js';
+import { resolveModelForAgent } from '../features/model-config/resolver.js';
 // Re-export base agents from individual files (rebranded names)
 export { architectAgent } from './architect.js';
 export { designerAgent } from './designer.js';
@@ -314,12 +315,16 @@ export function getAgentDefinitions(overrides) {
     for (const [name, config] of Object.entries(agents)) {
         const override = overrides?.[name];
         const disallowedTools = config.disallowedTools ?? parseDisallowedTools(name);
+        const staticModel = (override?.model ?? config.model);
+        // Apply .claude/models.json override if available
+        const resolved = resolveModelForAgent(name, staticModel);
+        const effectiveModel = resolved.type === 'claude' ? resolved.tier : staticModel;
         result[name] = {
             description: override?.description ?? config.description,
             prompt: override?.prompt ?? config.prompt,
             tools: override?.tools ?? config.tools,
             disallowedTools,
-            model: (override?.model ?? config.model),
+            model: effectiveModel,
             defaultModel: (override?.defaultModel ?? config.defaultModel)
         };
     }
