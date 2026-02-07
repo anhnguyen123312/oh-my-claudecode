@@ -14386,14 +14386,20 @@ function parseCodexOutput(output) {
   }
   return messages.join("\n") || output;
 }
-function executeCodex(prompt, model, cwd) {
+function executeCodex(prompt, model, cwd, options) {
   return new Promise((resolve5, reject) => {
     validateModelName(model);
     let settled = false;
     const args = ["exec", "-m", model, "--json", "--full-auto"];
+    const env = options?.apiKey || options?.baseUrl ? {
+      ...process.env,
+      ...options.apiKey ? { OPENAI_API_KEY: options.apiKey } : {},
+      ...options.baseUrl ? { OPENAI_BASE_URL: options.baseUrl } : {}
+    } : void 0;
     const child = (0, import_child_process3.spawn)("codex", args, {
       stdio: ["pipe", "pipe", "pipe"],
       ...cwd ? { cwd } : {},
+      ...env ? { env } : {},
       // shell: true needed on Windows for .cmd/.bat executables.
       // Safe: args are array-based and model names are regex-validated.
       ...process.platform === "win32" ? { shell: true } : {}
@@ -14449,18 +14455,18 @@ function executeCodex(prompt, model, cwd) {
     child.stdin.end();
   });
 }
-async function executeCodexWithFallback(prompt, model, cwd) {
+async function executeCodexWithFallback(prompt, model, cwd, options) {
   const modelExplicit = model !== void 0 && model !== null && model !== "";
   const effectiveModel = model || CODEX_DEFAULT_MODEL;
   if (modelExplicit) {
-    const response = await executeCodex(prompt, effectiveModel, cwd);
+    const response = await executeCodex(prompt, effectiveModel, cwd, options);
     return { response, usedFallback: false, actualModel: effectiveModel };
   }
   const modelsToTry = CODEX_MODEL_FALLBACKS.includes(effectiveModel) ? CODEX_MODEL_FALLBACKS.slice(CODEX_MODEL_FALLBACKS.indexOf(effectiveModel)) : [effectiveModel, ...CODEX_MODEL_FALLBACKS];
   let lastError = null;
   for (const tryModel of modelsToTry) {
     try {
-      const response = await executeCodex(prompt, tryModel, cwd);
+      const response = await executeCodex(prompt, tryModel, cwd, options);
       return {
         response,
         usedFallback: tryModel !== effectiveModel,
@@ -14849,7 +14855,8 @@ ${detection.installHint}`
     expectedResponsePath ? `**Response File:** ${expectedResponsePath}` : null
   ].filter(Boolean).join("\n");
   try {
-    const { response, usedFallback, actualModel } = await executeCodexWithFallback(fullPrompt, args.model, baseDir);
+    const providerOptions = args.api_key || args.base_url ? { apiKey: args.api_key, baseUrl: args.base_url } : void 0;
+    const { response, usedFallback, actualModel } = await executeCodexWithFallback(fullPrompt, args.model, baseDir, providerOptions);
     if (promptResult) {
       persistResponse({
         provider: "codex",

@@ -14339,7 +14339,7 @@ var GEMINI_MODEL_FALLBACKS = [
 var GEMINI_VALID_ROLES = ["designer", "writer", "vision"];
 var MAX_CONTEXT_FILES = 20;
 var MAX_FILE_SIZE = 5 * 1024 * 1024;
-function executeGemini(prompt, model, cwd) {
+function executeGemini(prompt, model, cwd, options) {
   return new Promise((resolve5, reject) => {
     if (model) validateModelName(model);
     let settled = false;
@@ -14347,9 +14347,15 @@ function executeGemini(prompt, model, cwd) {
     if (model) {
       args.push("--model", model);
     }
+    const env = options?.apiKey || options?.baseUrl ? {
+      ...process.env,
+      ...options.apiKey ? { GOOGLE_API_KEY: options.apiKey, GEMINI_API_KEY: options.apiKey } : {},
+      ...options.baseUrl ? { GEMINI_BASE_URL: options.baseUrl } : {}
+    } : void 0;
     const child = (0, import_child_process3.spawn)("gemini", args, {
       stdio: ["pipe", "pipe", "pipe"],
       ...cwd ? { cwd } : {},
+      ...env ? { env } : {},
       // shell: true needed on Windows for .cmd/.bat executables.
       // Safe: args are array-based and model names are regex-validated.
       ...process.platform === "win32" ? { shell: true } : {}
@@ -14750,10 +14756,11 @@ ${detection.installHint}`
   if (args.output_file) {
     resolvedOutputPath = (0, import_path5.resolve)(baseDirReal, args.output_file);
   }
+  const providerOptions = args.api_key || args.base_url ? { apiKey: args.api_key, baseUrl: args.base_url } : void 0;
   const errors = [];
   for (const tryModel of modelsToTry) {
     try {
-      const response = await executeGemini(fullPrompt, tryModel, baseDir);
+      const response = await executeGemini(fullPrompt, tryModel, baseDir, providerOptions);
       const usedFallback = tryModel !== requestedModel;
       const fallbackNote = usedFallback ? `[Fallback: used ${tryModel} instead of ${requestedModel}]
 

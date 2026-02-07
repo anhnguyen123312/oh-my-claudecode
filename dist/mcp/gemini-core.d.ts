@@ -23,7 +23,10 @@ export declare const MAX_FILE_SIZE: number;
 /**
  * Execute Gemini CLI command and return the response
  */
-export declare function executeGemini(prompt: string, model?: string, cwd?: string): Promise<string>;
+export declare function executeGemini(prompt: string, model?: string, cwd?: string, options?: {
+    apiKey?: string;
+    baseUrl?: string;
+}): Promise<string>;
 /**
  * Execute Gemini CLI in background (single model, no fallback chain)
  */
@@ -59,6 +62,8 @@ export declare function handleAskGemini(args: {
     files?: string[];
     background?: boolean;
     working_directory?: string;
+    api_key?: string;
+    base_url?: string;
 }): Promise<{
     content: Array<{
         type: 'text';

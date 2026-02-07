@@ -51,7 +51,7 @@ export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file
 /**
  * Execute Gemini CLI command and return the response
  */
-export function executeGemini(prompt, model, cwd) {
+export function executeGemini(prompt, model, cwd, options) {
     return new Promise((resolve, reject) => {
         if (model)
             validateModelName(model);
@@ -60,9 +60,18 @@ export function executeGemini(prompt, model, cwd) {
         if (model) {
             args.push('--model', model);
         }
+        // Build env overrides for provider-specific credentials
+        const env = options?.apiKey || options?.baseUrl
+            ? {
+                ...process.env,
+                ...(options.apiKey ? { GOOGLE_API_KEY: options.apiKey, GEMINI_API_KEY: options.apiKey } : {}),
+                ...(options.baseUrl ? { GEMINI_BASE_URL: options.baseUrl } : {}),
+            }
+            : undefined;
         const child = spawn('gemini', args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             ...(cwd ? { cwd } : {}),
+            ...(env ? { env } : {}),
             // shell: true needed on Windows for .cmd/.bat executables.
             // Safe: args are array-based and model names are regex-validated.
             ...(process.platform === 'win32' ? { shell: true } : {})
@@ -524,10 +533,13 @@ ${resolvedPrompt}`;
     if (args.output_file) {
         resolvedOutputPath = resolve(baseDirReal, args.output_file);
     }
+    const providerOptions = args.api_key || args.base_url
+        ? { apiKey: args.api_key, baseUrl: args.base_url }
+        : undefined;
     const errors = [];
     for (const tryModel of modelsToTry) {
         try {
-            const response = await executeGemini(fullPrompt, tryModel, baseDir);
+            const response = await executeGemini(fullPrompt, tryModel, baseDir, providerOptions);
             const usedFallback = tryModel !== requestedModel;
             const fallbackNote = usedFallback ? `[Fallback: used ${tryModel} instead of ${requestedModel}]\n\n` : '';
             // Persist response to disk (audit trail)

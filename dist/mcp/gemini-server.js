@@ -19,9 +19,11 @@ const askGeminiTool = tool("ask_gemini", "Send a prompt to Google Gemini CLI for
     model: { type: "string", description: `Gemini model to use (default: ${GEMINI_DEFAULT_MODEL}). Set OMC_GEMINI_DEFAULT_MODEL env var to change default. Auto-fallback chain: ${GEMINI_MODEL_FALLBACKS.join(' → ')}.` },
     background: { type: "boolean", description: "Run in background (non-blocking). Returns immediately with job metadata and file paths. Check response file for completion." },
     working_directory: { type: "string", description: "Working directory for path resolution and CLI execution. Defaults to process.cwd()." },
+    api_key: { type: "string", description: "Optional API key override. When provided, passed as GOOGLE_API_KEY to the Gemini CLI process." },
+    base_url: { type: "string", description: "Optional base URL override. When provided, passed as GEMINI_BASE_URL to the Gemini CLI process." },
 }, async (args) => {
-    const { prompt_file, output_file, agent_role, model, files, background, working_directory } = args;
-    return handleAskGemini({ prompt_file, output_file, agent_role, model, files, background, working_directory });
+    const { prompt_file, output_file, agent_role, model, files, background, working_directory, api_key, base_url } = args;
+    return handleAskGemini({ prompt_file, output_file, agent_role, model, files, background, working_directory, api_key, base_url });
 });
 const waitForJobTool = tool("wait_for_job", "Block (poll) until a background job reaches a terminal state (completed, failed, or timeout). Uses exponential backoff. Returns the response preview on success.", {
     job_id: { type: "string", description: "The job ID returned when the background job was dispatched." },

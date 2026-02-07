@@ -63,7 +63,7 @@ export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file
 /**
  * Execute Gemini CLI command and return the response
  */
-export function executeGemini(prompt: string, model?: string, cwd?: string): Promise<string> {
+export function executeGemini(prompt: string, model?: string, cwd?: string, options?: { apiKey?: string; baseUrl?: string }): Promise<string> {
   return new Promise((resolve, reject) => {
     if (model) validateModelName(model);
     let settled = false;
@@ -71,9 +71,20 @@ export function executeGemini(prompt: string, model?: string, cwd?: string): Pro
     if (model) {
       args.push('--model', model);
     }
+
+    // Build env overrides for provider-specific credentials
+    const env = options?.apiKey || options?.baseUrl
+      ? {
+          ...process.env,
+          ...(options.apiKey ? { GOOGLE_API_KEY: options.apiKey, GEMINI_API_KEY: options.apiKey } : {}),
+          ...(options.baseUrl ? { GEMINI_BASE_URL: options.baseUrl } : {}),
+        }
+      : undefined;
+
     const child = spawn('gemini', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       ...(cwd ? { cwd } : {}),
+      ...(env ? { env } : {}),
       // shell: true needed on Windows for .cmd/.bat executables.
       // Safe: args are array-based and model names are regex-validated.
       ...(process.platform === 'win32' ? { shell: true } : {})
@@ -336,6 +347,8 @@ export async function handleAskGemini(args: {
   files?: string[];
   background?: boolean;
   working_directory?: string;
+  api_key?: string;
+  base_url?: string;
 }): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   const { agent_role, model = GEMINI_DEFAULT_MODEL, files } = args;
 
@@ -585,10 +598,13 @@ ${resolvedPrompt}`;
     resolvedOutputPath = resolve(baseDirReal, args.output_file);
   }
 
+  const providerOptions = args.api_key || args.base_url
+    ? { apiKey: args.api_key, baseUrl: args.base_url }
+    : undefined;
   const errors: string[] = [];
   for (const tryModel of modelsToTry) {
     try {
-      const response = await executeGemini(fullPrompt, tryModel, baseDir);
+      const response = await executeGemini(fullPrompt, tryModel, baseDir, providerOptions);
       const usedFallback = tryModel !== requestedModel;
       const fallbackNote = usedFallback ? `[Fallback: used ${tryModel} instead of ${requestedModel}]\n\n` : '';
 

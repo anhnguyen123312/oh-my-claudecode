@@ -38,12 +38,18 @@ export declare function parseCodexOutput(output: string): string;
 /**
  * Execute Codex CLI command and return the response
  */
-export declare function executeCodex(prompt: string, model: string, cwd?: string): Promise<string>;
+export declare function executeCodex(prompt: string, model: string, cwd?: string, options?: {
+    apiKey?: string;
+    baseUrl?: string;
+}): Promise<string>;
 /**
  * Execute Codex CLI with model fallback chain
  * Only falls back on model_not_found errors when model was not explicitly provided
  */
-export declare function executeCodexWithFallback(prompt: string, model: string | undefined, cwd?: string): Promise<{
+export declare function executeCodexWithFallback(prompt: string, model: string | undefined, cwd?: string, options?: {
+    apiKey?: string;
+    baseUrl?: string;
+}): Promise<{
     response: string;
     usedFallback: boolean;
     actualModel: string;
@@ -74,6 +80,8 @@ export declare function handleAskCodex(args: {
     context_files?: string[];
     background?: boolean;
     working_directory?: string;
+    api_key?: string;
+    base_url?: string;
 }): Promise<{
     content: Array<{
         type: 'text';

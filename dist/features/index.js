@@ -46,6 +46,14 @@ evaluateRules, getMatchingRules, createRule, mergeRules, DEFAULT_ROUTING_RULES,
 adaptPromptForTier, getPromptStrategy, getPromptPrefix, getPromptSuffix, createDelegationPrompt, getTaskInstructions, 
 // Constants
 TIER_MODELS, TIER_TO_MODEL_TYPE, DEFAULT_ROUTING_CONFIG, AGENT_CATEGORY_TIERS, COMPLEXITY_KEYWORDS, TIER_PROMPT_STRATEGIES, TIER_TASK_INSTRUCTIONS, } from './model-routing/index.js';
+// Model Config - multi-provider model configuration
+export { 
+// Constants
+PROVIDER_MCP_MAPPING, CLAUDE_TIERS, 
+// Loader
+getModelsConfigPath, resolveApiKey, loadModelsConfigFromFile, validateConfig as validateModelsConfig, loadModelsConfig, getAgentModelConfig, getResolvedProviderConfig, clearModelsConfigCache, 
+// Resolver
+getMcpToolForProvider, resolveModelForAgent, isProviderAvailable, getFallbackModel, resolveModelWithFallback, } from './model-config/index.js';
 // Notepad Wisdom - plan-scoped wisdom accumulation
 export { 
 // Functions
