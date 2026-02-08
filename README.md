@@ -25,26 +25,66 @@ English | [한국어](README.ko.md) | [中文](README.zh.md) | [日本語](READM
 
 ## Installation
 
-### From This Fork (Recommended)
+> **IMPORTANT:** This is a **fork** of oh-my-claudecode with extra features (multi-provider model config).
+> You must install from **this repo** (`anhnguyen123312`), NOT the original (`Yeachan-Heo`).
+
+### Step 1: Remove the original (if already installed)
+
+If you previously installed the original oh-my-claudecode, remove it first to avoid conflicts:
 
 ```bash
-# In Claude Code, install directly from this repo:
+# Check if original is installed
+claude mcp list 2>/dev/null; ls ~/.claude/plugins/ 2>/dev/null
+
+# Remove original plugin (if present)
+/plugin uninstall oh-my-claudecode
+```
+
+### Step 2: Install this fork
+
+```bash
+# Add THIS fork's marketplace (not the original!)
 /plugin marketplace add https://github.com/anhnguyen123312/oh-my-claudecode
+
+# Install from the fork
 /plugin install oh-my-claudecode
 ```
 
-### Setup
+**Verify you installed the correct version:**
+```bash
+# Should show: https://github.com/anhnguyen123312/oh-my-claudecode
+cat ~/.claude/plugins/oh-my-claudecode/.claude-plugin/plugin.json | grep repository
+```
+
+### Step 3: Run setup
 
 ```bash
-# Run the one-time setup
+/oh-my-claudecode:omc-setup
+```
+
+### Alternative: Manual install (git clone)
+
+If the plugin marketplace doesn't work, install manually:
+
+```bash
+# Clone the fork directly into Claude Code's plugin directory
+git clone https://github.com/anhnguyen123312/oh-my-claudecode.git ~/.claude/plugins/oh-my-claudecode
+cd ~/.claude/plugins/oh-my-claudecode
+npm install --omit=dev
+npm run build
+
+# Then restart Claude Code and run:
 /oh-my-claudecode:omc-setup
 ```
 
 ### Updating
 
 ```bash
-# Update the plugin
+# Update from THIS fork
 /plugin install oh-my-claudecode
+
+# Or if manually installed:
+cd ~/.claude/plugins/oh-my-claudecode && git pull origin main && npm install --omit=dev && npm run build
 
 # Re-run setup to refresh configuration
 /oh-my-claudecode:omc-setup
@@ -52,6 +92,29 @@ English | [한국어](README.ko.md) | [中文](README.zh.md) | [日本語](READM
 # If issues after updating
 /oh-my-claudecode:doctor
 ```
+
+### Troubleshooting: Claude installs the wrong version
+
+If Claude Code keeps installing the original instead of this fork:
+
+1. **Check which repo is registered:**
+   ```bash
+   cat ~/.claude/plugins/oh-my-claudecode/.claude-plugin/plugin.json
+   ```
+   The `repository` field MUST be `https://github.com/anhnguyen123312/oh-my-claudecode`
+
+2. **Force reinstall from fork:**
+   ```bash
+   rm -rf ~/.claude/plugins/oh-my-claudecode
+   git clone https://github.com/anhnguyen123312/oh-my-claudecode.git ~/.claude/plugins/oh-my-claudecode
+   cd ~/.claude/plugins/oh-my-claudecode && npm install --omit=dev && npm run build
+   ```
+
+3. **Verify after restart:**
+   ```bash
+   /oh-my-claudecode:help
+   # Should mention "Multi-Provider Model Configuration" in features
+   ```
 
 ---
 
@@ -284,9 +347,9 @@ Both tools now support `api_key` and `base_url` parameters for provider-specific
 
 ## Specialized Agents
 
-35 specialized agents across multiple tiers:
+30 specialized agents (consolidated in v4.1.0+):
 
-### Advisory (Opus Tier)
+### Advisory (Opus)
 | Agent | Description |
 |-------|-------------|
 | `architect` | Strategic architecture & debugging advisor |
@@ -294,8 +357,10 @@ Both tools now support `api_key` and `base_url` parameters for provider-specific
 | `critic` | Work plan review expert |
 | `planner` | Strategic planning consultant with interview workflow |
 | `deep-executor` | Autonomous deep worker for complex tasks |
+| `product-manager` | Product strategy and feature prioritization |
+| `product-analyst` | Requirements analysis and user research |
 
-### Specialist (Sonnet Tier)
+### Specialist (Sonnet)
 | Agent | Description |
 |-------|-------------|
 | `executor` | Focused task executor for implementation |
@@ -305,35 +370,25 @@ Both tools now support `api_key` and `base_url` parameters for provider-specific
 | `qa-tester` | Interactive CLI testing specialist |
 | `code-reviewer` | Expert code review specialist |
 | `security-reviewer` | Security vulnerability detection |
-| `tdd-guide` | Test-Driven Development specialist |
-| `architect-medium` | Architecture & debugging advisor (medium complexity) |
-| `explore-medium` | Thorough codebase search with reasoning |
 | `git-master` | Git expert for atomic commits and history management |
 | `vision` | Visual/media file analyzer |
+| `api-reviewer` | API design and consistency reviewer |
+| `performance-reviewer` | Performance analysis and optimization |
+| `quality-reviewer` | Code quality and maintainability review |
+| `quality-strategist` | Test strategy and quality planning |
+| `style-reviewer` | Code style and convention enforcement |
+| `ux-researcher` | UX research and usability analysis |
+| `test-engineer` | Test implementation specialist |
+| `debugger` | Systematic debugging specialist |
+| `verifier` | Implementation verification |
 
-### Utility (Haiku Tier)
+### Utility (Haiku)
 | Agent | Description |
 |-------|-------------|
 | `explore` | Fast codebase search specialist |
 | `writer` | Technical documentation writer |
-| `architect-low` | Quick code questions & simple lookups |
-| `build-fixer-low` | Simple build error fixer |
-| `code-reviewer-low` | Quick code quality checker |
-| `security-reviewer-low` | Quick security scan |
-| `tdd-guide-low` | Quick test suggestion |
-| `designer-low` | Simple styling and minor UI tweaks |
-| `executor-low` | Simple single-file task executor |
-| `researcher-low` | Quick documentation lookups |
-| `scientist-low` | Quick data inspection |
-
-### High-Tier Variants (Opus)
-| Agent | Description |
-|-------|-------------|
-| `executor-high` | Complex multi-file task executor |
-| `designer-high` | Complex UI architecture and design systems |
-| `explore-high` | Complex architectural search |
-| `qa-tester-high` | Comprehensive production-ready QA testing |
-| `scientist-high` | Complex research, hypothesis testing, ML |
+| `dependency-expert` | Dependency management and updates |
+| `information-architect` | Documentation structure and organization |
 
 ---
 
