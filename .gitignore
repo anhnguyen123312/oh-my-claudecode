@@ -5,6 +5,11 @@ node_modules/
 .sisyphus/
 .idea/
 
+# Auto-generated claude-mem context files
+**/CLAUDE.md
+!docs/CLAUDE.md
+
 # Windows reserved names (prevent accidental creation)
 nul
 NUL
+dist

@@ -1,0 +1,147 @@
+{
+  "providers": {},
+
+  "agents": {
+    "architect": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "architect-medium": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "architect-low": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "critic": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "analyst": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "planner": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "deep-executor": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "executor": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "executor-high": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "executor-low": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "designer": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "designer-high": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "designer-low": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "code-reviewer": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "code-reviewer-low": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "security-reviewer": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "security-reviewer-low": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "tdd-guide": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "tdd-guide-low": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "researcher": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "researcher-low": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "scientist": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "scientist-high": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "scientist-low": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "explore": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "explore-medium": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "explore-high": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "qa-tester": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "qa-tester-high": {
+      "provider": "claude",
+      "model": "opus"
+    },
+    "build-fixer": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "build-fixer-low": {
+      "provider": "claude",
+      "model": "haiku"
+    },
+    "git-master": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "vision": {
+      "provider": "claude",
+      "model": "sonnet"
+    },
+    "writer": {
+      "provider": "claude",
+      "model": "haiku"
+    }
+  },
+
+  "defaults": {
+    "provider": "claude",
+    "model": "sonnet"
+  }
+}
